@@ -162,6 +162,30 @@ public class Me2day {
 		HttpResponse response = client.execute(post);
 		response.getEntity().consumeContent();
 	}
+	
+	@SneakyThrows(org.apache.http.client.ClientProtocolException.class) 
+	public void giftToken( String userIdToReceive, int amount ) throws IOException {
+		HttpPost post = new HttpPost(String.format("http://me2day.net/%s/setting/token_gift", getUsername()));
+		setDefaultHeaders(post);
+		
+		List<NameValuePair> params = new ArrayList<NameValuePair>();
+		params.add(new BasicNameValuePair("token_gift_id", userIdToReceive));
+		params.add(new BasicNameValuePair("token_to_gift", String.valueOf(amount)));
+		
+		UrlEncodedFormEntity formEntity = new UrlEncodedFormEntity(params, "UTF-8");
+		post.setEntity(formEntity);
+		
+		HttpResponse response = client.execute(post);
+		String result = EntityUtils.toString(response.getEntity(), "UTF-8");
+		response.getEntity().consumeContent();
+		
+		Pattern p = Pattern.compile("result\":true");
+		Matcher m = p.matcher(result);
+		if( !m.find() ) {
+			System.out.println(result);
+			throw new IOException("giftToken failed!");
+		}
+	}
 
 	/**
 	 * @param args
@@ -179,7 +203,8 @@ public class Me2day {
 		api.login();
 		System.out.println( api.getMyBands() );
 		
-		api.createBandPost(Band.create("rath", "me2adalt"), "테스트", "태그");
+//		api.createBandPost(Band.create("rath", "me2adalt"), "테스트", "태그");
+		api.giftToken("xrath", 15);
 	}
 
 }
