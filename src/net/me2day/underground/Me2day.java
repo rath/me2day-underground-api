@@ -53,9 +53,6 @@ public class Me2day {
 	 */
 	@SneakyThrows(org.apache.http.client.ClientProtocolException.class)
 	public void login() throws IOException {
-		HttpGet index = new HttpGet("http://me2day.net");
-		client.execute(index).getEntity().consumeContent();
-		
 		HttpPost post = new HttpPost("http://me2day.net/account/login_select");
 		setDefaultHeaders(post);
 		
@@ -204,7 +201,7 @@ public class Me2day {
 		System.out.println( api.getMyBands() );
 		
 //		api.createBandPost(Band.create("rath", "me2adalt"), "테스트", "태그");
-		api.giftToken("xrath", 15);
+//		api.giftToken("xrath", 15);
 	}
 
 }
