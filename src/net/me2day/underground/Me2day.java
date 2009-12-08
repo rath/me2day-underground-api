@@ -3,7 +3,9 @@ package net.me2day.underground;
 import java.io.IOException;
 import java.net.URL;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -36,6 +38,16 @@ public class Me2day {
 	@Getter @Setter
 	private String password;
 	private HttpClient client = new DefaultHttpClient();
+	
+	Pattern p = Pattern.compile("<div class=\"sec_post\">(.*?)(?=<div class=\"sec_post\">)", Pattern.DOTALL);
+	Pattern pId = Pattern.compile("<a href=\"/(.+?)/post/(.+?)/icon\"");
+	Pattern pProfileImage = Pattern.compile("<div class=\"image_box\" >.*?<img src=\"([^\"]*)\"", Pattern.DOTALL);
+	Pattern pIcon = Pattern.compile("<div class=\"icons_slt\">.*?<img .*? src=\"([^\"]*)\"", Pattern.DOTALL);
+	Pattern pMetooCnt = Pattern.compile("<div class=\"metoo_cnt\">.*?<a href=\".*?/metoos\".*?>([0-9]+)</a>", Pattern.DOTALL);
+	Pattern pTimestamp = Pattern.compile("<span class=\"timestamp\" title=\"(.*?)\">");
+	Pattern pContent = Pattern.compile("<div class=\"post_cont\">.*?<p>\\s*(.*?)\\s*<span", Pattern.DOTALL);
+	Pattern pPhoto = Pattern.compile("new RichContentLink.*?'(http://.*?)'");
+	private String nextPageOffset;
 	
 	public Me2day() { 
 //		CookieStore store = new MyCookieStore();
@@ -183,6 +195,88 @@ public class Me2day {
 			throw new IOException("giftToken failed!");
 		}
 	}
+	
+	public List<Map<String, String>> getMetoos() throws IOException {
+		List<Map<String, String>> list = new ArrayList<Map<String, String>>();
+		
+		String queryString = "";
+		if( nextPageOffset!=null ) 
+			queryString = "?from=" + nextPageOffset;
+		HttpGet get = new HttpGet(String.format("http://me2day.net/%s/metoo%s", getUsername(), queryString));
+		get.addHeader("Accept", "text/html");
+		
+		HttpResponse response = client.execute(get);
+		String result = EntityUtils.toString(response.getEntity(), "UTF-8");
+		response.getEntity().consumeContent();
+		
+		int lastOffset = 0;
+		Matcher matcher = p.matcher(result);
+		while( matcher.find() ) {
+			String group = matcher.group(1);
+
+			Map<String, String> item = parseEntry(group);
+			// 마지막 index를 검사해야 한다.
+			list.add(item);
+			lastOffset = matcher.end();
+		}
+		
+		Map<String, String> lastItem = parseEntry(result.substring(lastOffset));
+		list.add(lastItem);
+		
+		Pattern pNext = Pattern.compile("<a href=\".*?from=([0-9]+)\" id=\"get_mystream_link\"");
+		matcher = pNext.matcher(result);
+		if( matcher.find() ) {
+			nextPageOffset = matcher.group(1);
+		}
+		
+		return list;
+	}
+	
+	public void resetPagination() {
+		this.nextPageOffset = null;
+	}
+
+	
+	protected Map<String, String> parseEntry( String group ) {
+		Map<String, String> item = new HashMap<String, String>();
+		
+		Matcher m;
+		m = pId.matcher(group);
+		if( m.find() ) {
+			item.put("author.id", m.group(1));
+			item.put("post.id", m.group(2));
+		}
+		m = pProfileImage.matcher(group);
+		if( m.find() ) {
+			item.put("profile.url", m.group(1));
+		}
+		m = pIcon.matcher(group);
+		if( m.find() ) { 
+			item.put("icon.url", m.group(1));
+		}
+		m = pMetooCnt.matcher(group);
+		if( m.find() ) {
+			item.put("metoo.count", m.group(1));
+		}
+		m = pTimestamp.matcher(group);
+		if( m.find() ) {
+			item.put("timestamp", m.group(1));
+		}
+		m = pContent.matcher(group);
+		if( m.find() ) {
+			String content = m.group(1).trim();
+			item.put("content.html", content);
+			item.put("content.plain", content.replaceAll("<[^>]+>", ""));
+		}
+		m = pPhoto.matcher(group);
+		if( m.find() ) {
+			// 없을 수도 있어요.
+			item.put("me2photo.page", m.group(1).replaceAll("&amp;", "&"));
+		}
+		
+		System.out.println(item);
+		return item;
+	}
 
 	/**
 	 * @param args
@@ -197,6 +291,16 @@ public class Me2day {
 		Me2day api = new Me2day();
 		api.setUsername("rath");
 		api.setPassword(args[0]);
+		api.login();
+		List<Map<String, String>> metoos = new ArrayList<Map<String, String>>();
+		while(true) {
+			List<Map<String, String>> list = api.getMetoos();
+			if( list.size()==0 ) 
+				break;
+			metoos.addAll(list);
+		}
+		
+		System.exit(1);
 		api.login();
 		System.out.println( api.getMyBands() );
 		
