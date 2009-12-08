@@ -1,6 +1,8 @@
 package net.me2day.underground;
 
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.ObjectOutputStream;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -12,6 +14,7 @@ import java.util.regex.Pattern;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.SneakyThrows;
+import net.me2day.underground.util.BASE64;
 
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpResponse;
@@ -40,14 +43,19 @@ public class Me2day {
 	private HttpClient client = new DefaultHttpClient();
 	
 	Pattern p = Pattern.compile("<div class=\"sec_post\">(.*?)(?=<div class=\"sec_post\">)", Pattern.DOTALL);
-	Pattern pId = Pattern.compile("<a href=\"/(.+?)/post/(.+?)/icon\"");
+	Pattern pId = Pattern.compile("<a href=\"/(.+?)/post/(.+?)/metoos\"");
+	Pattern pNickname = Pattern.compile("<span class=\"name_text\"><a .*?>(.*?)</a></span>");
 	Pattern pProfileImage = Pattern.compile("<div class=\"image_box\" >.*?<img src=\"([^\"]*)\"", Pattern.DOTALL);
-	Pattern pIcon = Pattern.compile("<div class=\"icons_slt\">.*?<img .*? src=\"([^\"]*)\"", Pattern.DOTALL);
+	Pattern pIcon = Pattern.compile("<div class=\"icons_slt\">.*?<img.*?src=\"([^\"]*)\"", Pattern.DOTALL);
 	Pattern pMetooCnt = Pattern.compile("<div class=\"metoo_cnt\">.*?<a href=\".*?/metoos\".*?>([0-9]+)</a>", Pattern.DOTALL);
 	Pattern pTimestamp = Pattern.compile("<span class=\"timestamp\" title=\"(.*?)\">");
 	Pattern pContent = Pattern.compile("<div class=\"post_cont\">.*?<p>\\s*(.*?)\\s*<span", Pattern.DOTALL);
 	Pattern pPhoto = Pattern.compile("new RichContentLink.*?'(http://.*?)'");
+	Pattern pTags = Pattern.compile("<a href.*?rel=\"tag\">(.*?)</a>", Pattern.DOTALL);
 	private String nextPageOffset;
+	
+	@Getter @Setter
+	private boolean downloadImages;
 	
 	public Me2day() { 
 //		CookieStore store = new MyCookieStore();
@@ -237,7 +245,7 @@ public class Me2day {
 	}
 
 	
-	protected Map<String, String> parseEntry( String group ) {
+	protected Map<String, String> parseEntry( String group ) throws IOException {
 		Map<String, String> item = new HashMap<String, String>();
 		
 		Matcher m;
@@ -246,13 +254,21 @@ public class Me2day {
 			item.put("author.id", m.group(1));
 			item.put("post.id", m.group(2));
 		}
+		m = pNickname.matcher(group);
+		if( m.find() ) {
+			item.put("author.nickname", m.group(1));
+		}
 		m = pProfileImage.matcher(group);
 		if( m.find() ) {
 			item.put("profile.url", m.group(1));
+			if( downloadImages ) 
+				item.put("profile.url.bytes", getContent(m.group(1)));
 		}
 		m = pIcon.matcher(group);
 		if( m.find() ) { 
 			item.put("icon.url", m.group(1));
+			if( downloadImages ) 
+				item.put("icon.url.bytes", getContent(m.group(1)));
 		}
 		m = pMetooCnt.matcher(group);
 		if( m.find() ) {
@@ -271,11 +287,44 @@ public class Me2day {
 		m = pPhoto.matcher(group);
 		if( m.find() ) {
 			// 없을 수도 있어요.
-			item.put("me2photo.page", m.group(1).replaceAll("&amp;", "&"));
+			String photoPage = m.group(1).replaceAll("&amp;", "&");
+			item.put("me2photo.page", photoPage);
+			if( downloadImages ) {				
+				String photoSource = getPage(photoPage);
+				Pattern p = Pattern.compile("<img src=\"(.*?)\"");
+				m = p.matcher(photoSource);
+				if( m.find() ) {
+					item.put("me2photo.page.bytes", getContent(m.group(1)));
+				}
+			}
 		}
+		m = pTags.matcher(group);
+		StringBuilder tags = new StringBuilder();
+		while( m.find() ) { 
+			tags.append(m.group(1));
+			tags.append(' ');
+		}
+		item.put("tags", tags.toString());
 		
-		System.out.println(item);
+//		System.out.println(item.get("post.id") + ": " + item.get("content.plain"));
+//		System.out.println(item.get("post.id") + ": " + item.get("tags"));
 		return item;
+	}
+	
+	private String getPage( String url ) throws IOException {
+		HttpGet get = new HttpGet(url);
+		HttpResponse res = client.execute(get);
+		String page = EntityUtils.toString(res.getEntity(), "UTF-8");
+		res.getEntity().consumeContent();
+		return page;
+	}
+	
+	private String getContent( String url ) throws IOException {
+		HttpGet get = new HttpGet(url);
+		HttpResponse res = client.execute(get);
+		String ret = new BASE64(false).encode(EntityUtils.toByteArray(res.getEntity()));
+		res.getEntity().consumeContent();
+		return ret;
 	}
 
 	/**
@@ -289,6 +338,7 @@ public class Me2day {
 		System.setProperty("org.apache.commons.logging.simplelog.log.org.apache.http.wire", "ERROR");
 
 		Me2day api = new Me2day();
+		api.setDownloadImages(true);
 		api.setUsername("rath");
 		api.setPassword(args[0]);
 		api.login();
@@ -298,7 +348,14 @@ public class Me2day {
 			if( list.size()==0 ) 
 				break;
 			metoos.addAll(list);
+			if( metoos.size() >= 100 ) 
+				break;
 		}
+		
+		ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream("metoos.dat"));
+		oos.writeObject(metoos);
+		oos.flush();
+		oos.close();
 		
 		System.exit(1);
 		api.login();
