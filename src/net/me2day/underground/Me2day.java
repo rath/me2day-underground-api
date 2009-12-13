@@ -204,13 +204,19 @@ public class Me2day {
 		}
 	}
 	
-	public List<Map<String, String>> getMetoos() throws IOException {
+	/**
+	 * 
+	 * @param listName metoo, metooed, stream 
+	 * @return
+	 * @throws IOException
+	 */
+	protected List<Map<String, String>> getCommonListImpl(String listName) throws IOException {
 		List<Map<String, String>> list = new ArrayList<Map<String, String>>();
 		
 		String queryString = "";
 		if( nextPageOffset!=null ) 
 			queryString = "?from=" + nextPageOffset;
-		HttpGet get = new HttpGet(String.format("http://me2day.net/%s/metoo%s", getUsername(), queryString));
+		HttpGet get = new HttpGet(String.format("http://me2day.net/%s/%s%s", getUsername(), listName, queryString));
 		get.addHeader("Accept", "text/html");
 		
 		HttpResponse response = client.execute(get);
@@ -240,10 +246,21 @@ public class Me2day {
 		return list;
 	}
 	
+	public List<Map<String, String>> getMetoos() throws IOException {
+		return getCommonListImpl("metoo");
+	}
+	
+	public List<Map<String, String>> getMetooed() throws IOException {
+		return getCommonListImpl("metooed");
+	}	
+	
+	public List<Map<String, String>> getStreams() throws IOException {
+		return getCommonListImpl("stream");
+	}		
+	
 	public void resetPagination() {
 		this.nextPageOffset = null;
 	}
-
 	
 	protected Map<String, String> parseEntry( String group ) throws IOException {
 		Map<String, String> item = new HashMap<String, String>();
@@ -348,11 +365,11 @@ public class Me2day {
 			if( list.size()==0 ) 
 				break;
 			metoos.addAll(list);
-			if( metoos.size() >= 100 ) 
+			if( metoos.size() >= 120 )
 				break;
 		}
 		
-		ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream("metoos.dat"));
+		ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream("me2day-chunk.dat"));
 		oos.writeObject(metoos);
 		oos.flush();
 		oos.close();
