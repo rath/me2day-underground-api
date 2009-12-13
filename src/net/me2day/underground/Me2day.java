@@ -27,6 +27,9 @@ import org.apache.http.client.methods.HttpPost;
 import org.apache.http.client.methods.HttpRequestBase;
 import org.apache.http.impl.client.DefaultHttpClient;
 import org.apache.http.message.BasicNameValuePair;
+import org.apache.http.params.BasicHttpParams;
+import org.apache.http.params.CoreConnectionPNames;
+import org.apache.http.params.HttpParams;
 import org.apache.http.util.EntityUtils;
 
 /**
@@ -40,7 +43,7 @@ public class Me2day {
 	private String username;
 	@Getter @Setter
 	private String password;
-	private HttpClient client = new DefaultHttpClient();
+	private HttpClient client;
 	
 	Pattern p = Pattern.compile("<div class=\"sec_post\">(.*?)(?=<div class=\"sec_post\">)", Pattern.DOTALL);
 	Pattern pId = Pattern.compile("<a href=\"/(.+?)/post/(.+?)/metoos\"");
@@ -58,6 +61,12 @@ public class Me2day {
 	private boolean downloadImages;
 	
 	public Me2day() { 
+    	// Http Client 
+    	HttpParams httpParams = new BasicHttpParams();
+        httpParams.setIntParameter(CoreConnectionPNames.CONNECTION_TIMEOUT, 4000);
+        httpParams.setIntParameter(CoreConnectionPNames.SO_TIMEOUT, 8000);
+        httpParams.setBooleanParameter(CoreConnectionPNames.STALE_CONNECTION_CHECK, true);
+    	client = new DefaultHttpClient(httpParams);		
 //		CookieStore store = new MyCookieStore();
 	}
 	
@@ -323,7 +332,7 @@ public class Me2day {
 		}
 		item.put("tags", tags.toString());
 		
-//		System.out.println(item.get("post.id") + ": " + item.get("content.plain"));
+		System.out.println(item.get("post.id") + ": " + item.get("content.plain"));
 //		System.out.println(item.get("post.id") + ": " + item.get("tags"));
 		return item;
 	}
@@ -336,11 +345,22 @@ public class Me2day {
 		return page;
 	}
 	
+	private Map<String, String> cache = new HashMap<String, String>();
+	
 	private String getContent( String url ) throws IOException {
+		
+		if( cache.containsKey(url) ) {
+//			System.out.println( "Cache hit!" );
+			return cache.get(url);
+		}
+		
 		HttpGet get = new HttpGet(url);
 		HttpResponse res = client.execute(get);
 		String ret = new BASE64(false).encode(EntityUtils.toByteArray(res.getEntity()));
 		res.getEntity().consumeContent();
+		
+		cache.put(url, ret);
+//		System.out.println("Insert cache: " + url);
 		return ret;
 	}
 
@@ -365,7 +385,8 @@ public class Me2day {
 			if( list.size()==0 ) 
 				break;
 			metoos.addAll(list);
-			if( metoos.size() >= 120 )
+			System.out.println( "Size: " + metoos.size() );
+			if( metoos.size() >= 100 )
 				break;
 		}
 		
